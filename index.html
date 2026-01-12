@@ -1,0 +1,466 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cycle Counting UI</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Google Fonts: Inter -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-main: #F0EFE9;
+            --primary-dark: #003C3C;
+            --primary-darkest: #0D2021;
+            --color-waiting-bg: #FFFFFF;
+            --color-waiting-border: #6B7280;
+            --color-completed-bg: #ECFDF5;
+            --color-completed-border: #10B981;
+        }
+
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: var(--bg-main);
+            color: var(--primary-darkest);
+        }
+
+        /* --- Navigation --- */
+        .nav-link {
+            color: var(--primary-dark);
+        }
+
+        .nav-link:hover {
+            color: var(--primary-darkest);
+            background-color: #e5e7eb;
+        }
+
+        .nav-link-active {
+            background-color: var(--primary-dark);
+            color: white;
+        }
+
+        /* --- Slot States --- */
+        .cycle-slot {
+            transition: all 0.2s ease-in-out;
+            position: relative;
+        }
+
+        .slot-empty {
+            background-color: var(--color-waiting-bg);
+            border: 2px dashed var(--color-waiting-border);
+            cursor: pointer;
+        }
+
+        .slot-empty:hover {
+            transform: translateY(-4px);
+            border-color: var(--primary-dark);
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
+        }
+
+        .slot-completed {
+            background-color: var(--color-completed-bg);
+            border: 2px solid var(--color-completed-border);
+            cursor: not-allowed;
+            opacity: 0.8;
+        }
+
+        /* --- Modal Panes --- */
+        #modal-content-grid {
+            display: grid;
+            grid-template-columns: 1fr 1.2fr 1fr;
+            gap: 24px;
+        }
+
+        .modal-pane {
+            display: flex;
+            flex-direction: column;
+            padding: 24px;
+            background-color: #F9FAFB;
+            border-radius: 16px;
+            border: 1px solid #E5E7EB;
+        }
+
+        /* Counter UI */
+        .qty-adjust-btn {
+            width: 64px;
+            height: 64px;
+            border-radius: 16px;
+            background-color: var(--primary-dark);
+            color: white;
+            font-size: 2rem;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.1s;
+            user-select: none;
+        }
+
+        .qty-adjust-btn:active {
+            transform: scale(0.95);
+            background-color: var(--primary-darkest);
+        }
+
+        .qty-display {
+            font-size: 4rem;
+            font-weight: 800;
+            min-width: 120px;
+            text-align: center;
+            color: var(--primary-darkest);
+        }
+
+        .slot-group-container {
+            border: 2px dashed #D1D5DB;
+            background-color: rgba(255, 255, 255, 0.4);
+            border-radius: 1.5rem;
+            padding: 1.5rem;
+            display: grid;
+            grid-template-columns: repeat(6, minmax(0, 1fr));
+            gap: 1.25rem;
+            width: 100%;
+            max-width: 850px;
+        }
+
+        /* Fixed Heights for desktop */
+        @media (min-width: 1024px) {
+            .cycle-slot {
+                min-height: 180px;
+            }
+        }
+    </style>
+</head>
+
+<body class="antialiased">
+
+    <div id="root" class="flex flex-col h-screen">
+        <!-- Header -->
+        <header class="bg-white border-b border-gray-200 shadow-sm z-10">
+            <div class="container mx-auto px-4">
+                <div class="flex items-center justify-between h-16">
+                    <div class="flex items-center space-x-8">
+                        <div class="font-bold text-xl text-primary-dark tracking-tight">Cartesian Kinetics</div>
+                        <nav class="hidden md:flex items-center space-x-1">
+                            <a href="#" class="px-3 py-2 text-sm font-medium rounded-md nav-link">Order Fulfillment</a>
+                            <a href="#" class="px-3 py-2 text-sm font-medium rounded-md nav-link">Inbounds</a>
+                            <a href="#" class="px-3 py-2 text-sm font-medium rounded-md nav-link">Replenishment</a>
+                            <a href="#" class="px-3 py-2 text-sm font-semibold rounded-md nav-link-active">Cycle Count</a>
+                        </nav>
+                    </div>
+                    <div class="flex items-center space-x-4">
+                        <div class="text-right text-xs text-primary-dark">
+                            <div id="date-time">--:-- -- 2026</div>
+                            <div class="font-bold">John Doe</div>
+                        </div>
+                        <div class="w-10 h-10 rounded-full bg-teal-800 flex items-center justify-center text-white font-bold">JD</div>
+                    </div>
+                </div>
+            </div>
+        </header>
+
+        <!-- Main Content -->
+        <main class="flex-grow p-6 overflow-y-auto">
+            <div class="container mx-auto">
+                <div class="flex flex-col md:flex-row md:justify-between md:items-end mb-8 gap-4">
+                    <div>
+                        <h1 class="text-2xl font-bold text-primary-darkest">Cycle Counting</h1>
+                        <p class="text-gray-500">Select a bin to verify inventory levels.</p>
+                    </div>
+                    <div class="bg-white px-6 py-4 rounded-2xl border border-gray-200 shadow-sm flex items-center">
+                        <div class="bg-amber-100 p-2 rounded-lg mr-4">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 text-amber-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
+                            </svg>
+                        </div>
+                        <div>
+                            <p class="text-xs text-gray-400 uppercase font-bold tracking-wider">Remaining</p>
+                            <p class="text-sm font-medium text-gray-600">
+                                Bins left for cycle counting: <span id="bins-left-count" class="font-extrabold text-primary-dark text-xl ml-1">15</span>
+                            </p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Grid View -->
+                <div id="cycle-grid" dir="rtl" class="flex flex-col lg:flex-row gap-10 items-center justify-center w-full">
+                    <!-- Dynamic Groups -->
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- Cycle Count Modal -->
+    <div id="cycle-modal" class="hidden fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+        <div class="bg-white rounded-3xl shadow-2xl w-full max-w-7xl p-10 relative overflow-hidden">
+            
+            <div id="modal-content-grid">
+                <!-- PANE 1: SYSTEM DETAILS -->
+                <div class="modal-pane">
+                    <h2 class="text-lg font-bold text-gray-500 uppercase tracking-widest mb-6 text-center">System Data</h2>
+                    <div class="space-y-4">
+                        <div class="bg-white p-4 rounded-xl border border-gray-200">
+                            <label class="block text-xs font-bold text-gray-400 uppercase mb-1">SKU Identification</label>
+                            <p id="sku-id-display" class="text-xl font-mono font-bold text-primary-darkest tracking-tight">SKU-88219-X</p>
+                        </div>
+                        <div class="bg-white p-4 rounded-xl border border-gray-200">
+                            <label class="block text-xs font-bold text-gray-400 uppercase mb-1">Expected Quantity</label>
+                            <p id="expected-qty-display" class="text-4xl font-black text-primary-darkest">12</p>
+                            <p class="text-xs text-gray-400 mt-1">Last updated 2 hours ago</p>
+                        </div>
+                        <!-- Bin ID Above Bin Location -->
+                        <div class="bg-white p-4 rounded-xl border border-gray-200">
+                            <label class="block text-xs font-bold text-gray-400 uppercase mb-1">Bin ID</label>
+                            <p id="modal-bin-id-label" class="text-lg font-bold text-primary-darkest tracking-widest font-mono">--</p>
+                        </div>
+                        <div class="bg-white p-4 rounded-xl border border-gray-200">
+                            <label class="block text-xs font-bold text-gray-400 uppercase mb-1">Bin Location</label>
+                            <p id="modal-slot-label" class="text-lg font-bold text-primary-darkest">--</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- PANE 2: PHYSICAL VERIFICATION -->
+                <div class="modal-pane items-center">
+                    <h2 class="text-lg font-bold text-gray-500 uppercase tracking-widest mb-6">Physical Count</h2>
+                    <p class="text-sm text-center text-gray-500 mb-8">Manually count the items in the bin and adjust the counter below.</p>
+                    
+                    <div class="flex items-center space-x-6 space-x-reverse">
+                        <button onclick="changeQty(-1)" class="qty-adjust-btn shadow-lg">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="h-8 w-8" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M20 12H4" />
+                            </svg>
+                        </button>
+                        
+                        <div class="qty-display" id="counted-qty-display">12</div>
+                        
+                        <button onclick="changeQty(1)" class="qty-adjust-btn shadow-lg">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="h-8 w-8" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M12 4v16m8-8H4" />
+                            </svg>
+                        </button>
+                    </div>
+
+                    <div id="discrepancy-warning" class="mt-8 hidden flex items-center bg-red-50 text-red-700 px-4 py-3 rounded-lg border border-red-200">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 mr-2" viewBox="0 0 20 20" fill="currentColor">
+                            <path fill-rule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clip-rule="evenodd" />
+                        </svg>
+                        <span class="text-xs font-bold uppercase">Discrepancy detected</span>
+                    </div>
+                </div>
+
+                <!-- PANE 3: CONFIRMATION -->
+                <div class="modal-pane">
+                    <h2 class="text-lg font-bold text-gray-500 uppercase tracking-widest mb-6 text-center">Submission</h2>
+                    <div class="flex-grow flex flex-col justify-end">
+                        <div class="mb-8 space-y-4">
+                            <div class="flex items-center text-sm text-gray-600">
+                                <div class="w-2 h-2 rounded-full bg-green-500 mr-3"></div>
+                                Bin identified correctly
+                            </div>
+                            <div class="flex items-center text-sm text-gray-600">
+                                <div class="w-2 h-2 rounded-full bg-green-500 mr-3"></div>
+                                Physical quantity counted
+                            </div>
+                            <div class="flex items-center text-sm text-gray-600">
+                                <div class="w-2 h-2 rounded-full bg-green-500 mr-3"></div>
+                                SKU verified
+                            </div>
+                        </div>
+                        
+                        <button id="confirm-submit-btn" class="w-full py-5 bg-green-600 text-white font-bold rounded-2xl text-xl shadow-xl hover:bg-green-700 transition-colors">
+                            Submit Count
+                        </button>
+                        <p class="text-center text-[10px] text-gray-400 mt-4 uppercase font-bold">Acknowledge completion of task</p>
+                    </div>
+                </div>
+            </div>
+
+            <button onclick="closeModal()" class="absolute top-6 right-6 text-gray-400 hover:text-gray-600 transition-colors">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-8 w-8" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+                </svg>
+            </button>
+        </div>
+    </div>
+
+    <!-- Completion Popup -->
+    <div id="completion-modal" class="hidden fixed inset-0 bg-black/80 backdrop-blur-md flex items-center justify-center z-[100] p-4 cursor-pointer">
+        <div class="bg-white rounded-3xl shadow-2xl p-12 text-center max-w-md w-full cursor-default">
+            <div class="w-20 h-20 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-6">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-10 w-10 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7" />
+                </svg>
+            </div>
+            <h2 class="text-3xl font-bold text-primary-darkest mb-2">Success!</h2>
+            <p class="text-gray-600 text-lg">Cycle Counting is Completed</p>
+            <button onclick="location.reload()" class="mt-8 px-8 py-3 bg-primary-dark text-white rounded-xl font-bold hover:bg-primary-darkest transition-colors">
+                Start New Session
+            </button>
+        </div>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            // State
+            let binsRemaining = 15;
+            let activeSlotId = null;
+            let systemQty = 0;
+            let currentCount = 0;
+            const completedSlots = new Set();
+
+            // DOM
+            const cycleGrid = document.getElementById('cycle-grid');
+            const binsLeftEl = document.getElementById('bins-left-count');
+            const modal = document.getElementById('cycle-modal');
+            const completionModal = document.getElementById('completion-modal');
+            const dateTimeEl = document.getElementById('date-time');
+            
+            const skuDisplay = document.getElementById('sku-id-display');
+            const sysQtyDisplay = document.getElementById('expected-qty-display');
+            const countDisplay = document.getElementById('counted-qty-display');
+            const modalSlotLabel = document.getElementById('modal-slot-label');
+            const modalBinLabel = document.getElementById('modal-bin-id-label');
+            const warningEl = document.getElementById('discrepancy-warning');
+            const submitBtn = document.getElementById('confirm-submit-btn');
+
+            // Mock Data Generator
+            const mockSkus = ["SKU-102-A", "SKU-994-B", "SKU-332-C", "SKU-001-X", "SKU-882-M"];
+
+            function updateTime() {
+                const now = new Date();
+                const time = now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+                const date = now.toLocaleDateString('en-US', { weekday: 'short', day: 'numeric', month: 'short' });
+                dateTimeEl.textContent = `${time} ${date} 2026`;
+            }
+
+            function createSlotElement(i) {
+                const id = `${i}.1.1.`;
+                const isCompleted = completedSlots.has(id);
+                const isSessionFinished = binsRemaining === 0;
+                
+                const slot = document.createElement('div');
+                slot.className = `cycle-slot rounded-2xl p-4 flex flex-col items-center justify-between ${isCompleted ? 'slot-completed' : 'slot-empty'}`;
+                
+                if (isCompleted) {
+                    slot.innerHTML = `
+                        <div class="flex-grow flex items-center justify-center">
+                            <div class="bg-green-100 p-3 rounded-full">
+                                <svg class="w-8 h-8 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7" />
+                                </svg>
+                            </div>
+                        </div>
+                    `;
+                } else if (isSessionFinished) {
+                    // All slots disabled if session is done
+                    slot.classList.add('opacity-50', 'cursor-not-allowed');
+                    slot.innerHTML = `<div class="flex-grow"></div>`;
+                } else {
+                    slot.innerHTML = `<div class="flex-grow"></div>`;
+                    slot.onclick = () => openCycleModal(id);
+                }
+
+                slot.innerHTML += `<div class="text-center font-bold text-sm text-primary-dark mt-2" style="direction: ltr">Slot: ${id}</div>`;
+                return slot;
+            }
+
+            function initGrid() {
+                cycleGrid.innerHTML = '';
+                
+                // Group 1: 1-6
+                const group1 = document.createElement('div');
+                group1.className = 'slot-group-container';
+                for (let i = 1; i <= 6; i++) group1.appendChild(createSlotElement(i));
+                
+                // Group 2: 8-13
+                const group2 = document.createElement('div');
+                group2.className = 'slot-group-container';
+                for (let i = 8; i <= 13; i++) group2.appendChild(createSlotElement(i));
+
+                cycleGrid.appendChild(group1);
+                cycleGrid.appendChild(group2);
+            }
+
+            window.openCycleModal = (id) => {
+                if (binsRemaining === 0) return;
+                activeSlotId = id;
+                systemQty = Math.floor(Math.random() * 15) + 5;
+                currentCount = systemQty; // Default to expected for speed
+                
+                // Set Modal Data
+                modalSlotLabel.textContent = id;
+                modalBinLabel.textContent = 'B' + Math.floor(100000 + Math.random() * 900000); // Random Bin ID
+                skuDisplay.textContent = mockSkus[Math.floor(Math.random() * mockSkus.length)];
+                sysQtyDisplay.textContent = systemQty;
+                countDisplay.textContent = currentCount;
+                
+                checkDiscrepancy();
+                modal.classList.remove('hidden');
+            };
+
+            window.closeModal = () => {
+                modal.classList.add('hidden');
+                activeSlotId = null;
+            };
+
+            window.changeQty = (val) => {
+                currentCount = Math.max(0, currentCount + val);
+                countDisplay.textContent = currentCount;
+                checkDiscrepancy();
+            };
+
+            function checkDiscrepancy() {
+                if (currentCount !== systemQty) {
+                    warningEl.classList.remove('hidden');
+                } else {
+                    warningEl.classList.add('hidden');
+                }
+            }
+
+            submitBtn.onclick = () => {
+                if (!activeSlotId) return;
+                
+                const targetSlotId = activeSlotId;
+                completedSlots.add(targetSlotId);
+                binsRemaining = Math.max(0, binsRemaining - 1);
+                binsLeftEl.textContent = binsRemaining;
+                
+                closeModal();
+                initGrid();
+
+                // Check for completion
+                if (binsRemaining === 0) {
+                    setTimeout(() => {
+                        completionModal.classList.remove('hidden');
+                    }, 500);
+                } else {
+                    // Reset slot back to normal after 15 seconds
+                    setTimeout(() => {
+                        completedSlots.delete(targetSlotId);
+                        initGrid();
+                    }, 15000);
+                }
+            };
+
+            // Overlay click logic
+            modal.onclick = (e) => { if(e.target === modal) closeModal(); };
+            
+            // Completion modal overlay click logic
+            completionModal.onclick = (e) => { 
+                if(e.target === completionModal) {
+                    completionModal.classList.add('hidden');
+                    initGrid(); // Refresh grid to ensure all slots are shown as disabled
+                }
+            };
+
+            // Start
+            initGrid();
+            updateTime();
+            setInterval(updateTime, 60000);
+        });
+    </script>
+</body>
+
+</html>
